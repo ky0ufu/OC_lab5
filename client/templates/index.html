@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Temperature Dashboard</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    .row { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
+    .card { border: 1px solid #ddd; border-radius: 10px; padding: 14px; min-width: 320px; }
+    .big { font-size: 34px; font-weight: 700; }
+    .muted { color: #666; }
+    label { display: inline-block; min-width: 90px; }
+    select, button { padding: 6px 10px; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { padding: 6px 10px; border-bottom: 1px solid #eee; text-align: left; font-size: 14px; }
+    canvas { max-width: 100%; }
+    code { background: #f6f6f6; padding: 2px 6px; border-radius: 6px; }
+    .section { margin-top: 18px; }
+    .section h3 { margin: 0 0 10px 0; }
+    .wide { width: 100%; }
+    .small { font-size: 12px; }
+  </style>
+</head>
+
+<body>
+  <h2>Температурный веб-клиент</h2>
+  <div class="muted">Temp-server: <code id="serverBase">{{ server_base }}</code></div>
+
+  <div class="row" style="margin-top: 14px;">
+    <div class="card">
+      <div class="muted">Текущая температура</div>
+      <div class="big" id="currentValue">—</div>
+      <div class="muted" id="currentTime">—</div>
+      <div style="margin-top: 10px;">
+        <button onclick="refreshAll()">Обновить всё</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="muted">Примечание</div>
+      <div style="margin-top: 10px;">
+        <div>RAW -- сырые измерения.</div>
+        <div>HOURLY -- средние по часу (показывает всё, что накоплено).</div>
+        <div>DAILY -- средние по дню (показывает всё за текущий год).</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== RAW ===================== -->
+  <div class="section">
+    <h3>RAW (сырые измерения)</h3>
+
+    <div class="row">
+      <div class="card">
+        <div class="muted">Период RAW</div>
+        <div style="margin-top: 10px;">
+          <label>Период:</label>
+          <select id="rawPeriod">
+            <option value="300">последние 5 минут</option>
+            <option value="900">последние 15 минут</option>
+            <option value="3600" selected>последний 1 час</option>
+            <option value="86400">последние 24 часа</option>
+          </select>
+          <button onclick="refreshRaw()">Обновить</button>
+        </div>
+        <div class="muted small" style="margin-top: 10px;">
+          Для RAW график может быть “плотный”, поэтому таблица ниже показывает последние N точек.
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="muted">Статистика RAW</div>
+        <table style="margin-top: 10px;">
+          <tr><td>count</td><td id="rawCount">—</td></tr>
+          <tr><td>min</td><td id="rawMin">—</td></tr>
+          <tr><td>max</td><td id="rawMax">—</td></tr>
+          <tr><td>avg</td><td id="rawAvg">—</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <div class="card wide">
+      <div class="muted">График RAW</div>
+      <canvas id="chartRaw" height="90"></canvas>
+    </div>
+
+    <div class="card wide">
+      <div class="muted">RAW — последние записи</div>
+      <table>
+        <thead><tr><th>time</th><th>value</th></tr></thead>
+        <tbody id="rawTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ===================== HOURLY ===================== -->
+  <div class="section">
+    <h3>HOURLY</h3>
+
+    <div class="row">
+      <div class="card">
+        <div class="muted"></div>
+        <div style="margin-top: 10px;">
+          <button onclick="refreshHourlyAll()">Обновить</button>
+        </div>
+        <div class="muted small" style="margin-top: 10px;">
+          Сервер хранит hourly за месяц.
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="muted">Статистика HOURLY</div>
+        <table style="margin-top: 10px;">
+          <tr><td>count</td><td id="hourCount">—</td></tr>
+          <tr><td>min</td><td id="hourMin">—</td></tr>
+          <tr><td>max</td><td id="hourMax">—</td></tr>
+          <tr><td>avg</td><td id="hourAvg">—</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <div class="card wide">
+      <div class="muted">График HOURLY</div>
+      <canvas id="chartHourly" height="90"></canvas>
+    </div>
+
+    <div class="card wide">
+      <div class="muted">HOURLY — все строки</div>
+      <table>
+        <thead><tr><th>time</th><th>value</th></tr></thead>
+        <tbody id="hourTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ===================== DAILY ===================== -->
+  <div class="section">
+    <h3>DAILY (среднее за день)</h3>
+
+    <div class="row">
+      <div class="card">
+        <div class="muted"></div>
+        <div style="margin-top: 10px;">
+          <button onclick="refreshDailyAll()">Обновить</button>
+        </div>
+        <div class="muted small" style="margin-top: 10px;">
+          Сервер хранит daily с 1 января текущего года.
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="muted">Статистика DAILY</div>
+        <table style="margin-top: 10px;">
+          <tr><td>count</td><td id="dayCount">—</td></tr>
+          <tr><td>min</td><td id="dayMin">—</td></tr>
+          <tr><td>max</td><td id="dayMax">—</td></tr>
+          <tr><td>avg</td><td id="dayAvg">—</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <div class="card wide">
+      <div class="muted">График DAILY</div>
+      <canvas id="chartDaily" height="90"></canvas>
+    </div>
+
+    <div class="card wide">
+      <div class="muted">DAILY — все строки</div>
+      <table>
+        <thead><tr><th>time</th><th>value</th></tr></thead>
+        <tbody id="dayTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    function unixNow() { return Math.floor(Date.now() / 1000); }
+    function fmtTime(ts) { return new Date(ts * 1000).toLocaleString(); }
+    async function fetchJson(url) {
+      const r = await fetch(url, { cache: "no-store" });
+      return await r.json();
+    }
+
+    // ====== Charts ======
+    const chartRaw = new Chart(document.getElementById("chartRaw").getContext("2d"), {
+      type: "line",
+      data: { labels: [], datasets: [{ label: "RAW", data: [] }] },
+      options: { responsive: true, animation: false }
+    });
+
+    const chartHourly = new Chart(document.getElementById("chartHourly").getContext("2d"), {
+      type: "line",
+      data: { labels: [], datasets: [{ label: "HOURLY", data: [] }] },
+      options: { responsive: true, animation: false }
+    });
+
+    const chartDaily = new Chart(document.getElementById("chartDaily").getContext("2d"), {
+      type: "line",
+      data: { labels: [], datasets: [{ label: "DAILY", data: [] }] },
+      options: { responsive: true, animation: false }
+    });
+
+    function setStats(prefix, st) {
+      const safe = (v) => (typeof v === "number" ? v.toFixed(3) : "—");
+      document.getElementById(prefix + "Count").innerText = st.ok ? st.count : "—";
+      document.getElementById(prefix + "Min").innerText   = st.ok ? safe(st.min) : "—";
+      document.getElementById(prefix + "Max").innerText   = st.ok ? safe(st.max) : "—";
+      document.getElementById(prefix + "Avg").innerText   = st.ok ? safe(st.avg) : "—";
+    }
+
+    function setSeries(chart, ser) {
+      if (!ser.ok || !ser.points) {
+        chart.data.labels = [];
+        chart.data.datasets[0].data = [];
+        chart.update();
+        return;
+      }
+      chart.data.labels = ser.points.map(p => fmtTime(p.ts));
+      chart.data.datasets[0].data = ser.points.map(p => p.value);
+      chart.update();
+    }
+
+    function fillTable(tbodyId, points, lastN) {
+      const tb = document.getElementById(tbodyId);
+      tb.innerHTML = "";
+
+      let arr = points || [];
+      if (lastN && arr.length > lastN) arr = arr.slice(arr.length - lastN);
+
+      for (const p of arr) {
+        const tr = document.createElement("tr");
+        const tdT = document.createElement("td");
+        const tdV = document.createElement("td");
+        tdT.innerText = fmtTime(p.ts);
+        tdV.innerText = (typeof p.value === "number") ? p.value.toFixed(3) : p.value;
+        tr.appendChild(tdT);
+        tr.appendChild(tdV);
+        tb.appendChild(tr);
+      }
+    }
+
+    async function refreshCurrent() {
+      const j = await fetchJson("/api/current");
+      if (!j.ok) {
+        document.getElementById("currentValue").innerText = "нет данных";
+        document.getElementById("currentTime").innerText = "";
+        return;
+      }
+      document.getElementById("currentValue").innerText = j.value.toFixed(3) + " °C";
+      document.getElementById("currentTime").innerText = fmtTime(j.ts);
+    }
+
+    async function refreshRaw() {
+      const period = parseInt(document.getElementById("rawPeriod").value, 10);
+      const to = unixNow();
+      const from = to - period;
+
+      const st = await fetchJson(`/api/stats?kind=raw&from=${from}&to=${to}`);
+      setStats("raw", st);
+
+      const ser = await fetchJson(`/api/series?kind=raw&from=${from}&to=${to}&limit=2000`);
+      setSeries(chartRaw, ser);
+      fillTable("rawTable", (ser.ok ? ser.points : []), 50);
+    }
+
+    async function refreshHourlyAll() {
+      const to = unixNow();
+      const from = to - 60 * 24 * 3600;
+
+      const st = await fetchJson(`/api/stats?kind=hourly&from=${from}&to=${to}`);
+      setStats("hour", st);
+
+      const ser = await fetchJson(`/api/series_all?kind=hourly&limit=2000`);
+      setSeries(chartHourly, ser);
+      fillTable("hourTable", (ser.ok ? ser.points : []), null);
+    }
+
+    async function refreshDailyAll() {
+      const now = new Date();
+      const y = now.getFullYear();
+      const from = Math.floor(new Date(y, 0, 1).getTime() / 1000);
+      const to = unixNow();
+
+      const st = await fetchJson(`/api/stats?kind=daily&from=${from}&to=${to}`);
+      setStats("day", st);
+
+      const ser = await fetchJson(`/api/series_all?kind=daily&limit=2000`);
+      setSeries(chartDaily, ser);
+      fillTable("dayTable", (ser.ok ? ser.points : []), null);
+    }
+
+    async function refreshAll() {
+      await refreshCurrent();
+      await refreshRaw();
+      await refreshHourlyAll();
+      await refreshDailyAll();
+    }
+
+    // Автообновление
+    document.addEventListener("DOMContentLoaded", () => {
+      document.getElementById("rawPeriod").addEventListener("change", refreshRaw);
+
+      setInterval(refreshCurrent, 2000);
+
+      setInterval(refreshRaw, 5000);
+
+      setInterval(refreshHourlyAll, 15000);
+
+      setInterval(refreshDailyAll, 30000);
+
+      refreshAll();
+    });
+  </script>
+</body>
+</html>
