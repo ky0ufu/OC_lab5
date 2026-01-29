@@ -51,7 +51,7 @@ static std::int64_t to_unix(std::chrono::system_clock::time_point tp) {
 int main(int argc, char** argv) {
     std::string dbPath = "temp.db";
 
-    std::string source = "stdin";
+    std::string source = "serial";
     std::string port;
     int baud = 9600;
 
